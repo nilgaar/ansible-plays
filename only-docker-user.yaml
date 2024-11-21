@@ -1,0 +1,33 @@
+---
+- name: Create a Docker-only user across servers
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Create the docker-only user
+      ansible.builtin.user:
+        name: dockeruser
+        shell: /usr/sbin/nologin
+        state: present
+
+    - name: Add the user to the docker group
+      ansible.builtin.user:
+        name: dockeruser
+        groups: docker
+        append: yes
+
+    - name: Verify Docker group exists
+      ansible.builtin.group:
+        name: docker
+        state: present
+
+    - name: Ensure Docker is installed (optional, if not already installed)
+      ansible.builtin.apt:
+        name: docker.io
+        state: present
+        update_cache: yes
+
+    - name: Restart Docker to apply group changes
+      ansible.builtin.service:
+        name: docker
+        state: restarted
