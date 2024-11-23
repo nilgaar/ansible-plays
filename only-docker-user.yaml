@@ -1,25 +1,36 @@
 ---
-- name: Create a Docker-only user across servers
+- name: Create a Docker user with password-based SSH access on Debian
   hosts: all
   become: yes
 
+  vars:
+    dockeruser_name: dockeruser
+    dockeruser_shell: /bin/bash
+    dockeruser_password: "{{ '<set you password here>' | password_hash('sha512') }}"
+
   tasks:
-    - name: Create the docker-only user
-      ansible.builtin.user:
-        name: dockeruser
-        shell: /usr/sbin/nologin
-        state: present
+    - name: Update APT package index
+      ansible.builtin.apt:
+        update_cache: yes
 
-    - name: Add the user to the docker group
-      ansible.builtin.user:
-        name: dockeruser
-        groups: docker
-        append: yes
-
-    - name: Verify Docker group exists
+    - name: Ensure Docker group exists
       ansible.builtin.group:
         name: docker
         state: present
+
+    - name: Create the docker-only user with a valid shell and password
+      ansible.builtin.user:
+        name: "{{ dockeruser_name }}"
+        shell: "{{ dockeruser_shell }}"
+        password: "{{ dockeruser_password }}"
+        state: present
+        create_home: yes
+
+    - name: Add the user to the docker group
+      ansible.builtin.user:
+        name: "{{ dockeruser_name }}"
+        groups: docker
+        append: yes
 
     - name: Ensure Docker is installed (optional, if not already installed)
       ansible.builtin.apt:
@@ -27,7 +38,28 @@
         state: present
         update_cache: yes
 
-    - name: Restart Docker to apply group changes
+    - name: Ensure Docker service is running and enabled
       ansible.builtin.service:
         name: docker
+        state: started
+        enabled: yes
+
+    - name: Ensure SSH package is installed
+      ansible.builtin.package:
+        name: openssh-server
+        state: present
+
+    - name: Enable Password Authentication in SSH
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^#?PasswordAuthentication"
+        line: "PasswordAuthentication yes"
+        state: present
+        backup: yes
+      notify: Restart SSH
+
+  handlers:
+    - name: Restart SSH
+      ansible.builtin.service:
+        name: ssh
         state: restarted
